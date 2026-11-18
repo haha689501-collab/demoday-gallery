@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>데모데이 전시관</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼</text></svg>">
+<meta name="description" content="조별 작품이 걸린 야외 전시 광장을 함께 걸으며 둘러보는 3D 전시관.">
+<meta name="theme-color" content="#24314a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="데모데이 전시관">
+<meta property="og:description" content="조별 부스를 걸으며 둘러보고, 발표 무대에서 함께 들어요. 방 코드만 있으면 함께 들어옵니다.">
+<meta property="og:site_name" content="데모데이 전시관">
+<!-- 빛 번짐(블룸) 모듈이 'three' 라는 이름으로 three.js 를 찾습니다. 같은 주소로 이어 줘야 블룸이 켜집니다 -->
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://esm.sh" crossorigin>
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.js" crossorigin>
+<script src="config.js"></script>
+<!-- 조 · 작품 — teams.js 는 배포용(이름 없음), teams.local.js 는 반 안에서만(이름 있음 · 배포에서 빠짐 · 없으면 그냥 건너뜀) -->
+<script src="teams.js"></script>
+<script src="teams.local.js"></script>
+<!-- 액자 캡처 내장본 (없어도 됨) — 파일로 바로 열 때도 액자에 작품 화면이 보이게 -->
+<script src="works/thumbs.js"></script>
+<script src="works/local/thumbs.js"></script>
+<script>
+  // 주소가 /gallery 처럼 끝에 / 없이 열리면 style.css · app.js 를 못 찾습니다 → /gallery/ 로 고쳐 엽니다
+  if (/^https?:$/.test(location.protocol) && !location.pathname.endsWith('/') && !/\.html$/.test(location.pathname))
+    location.replace(location.pathname + '/' + location.search + location.hash);
+</script>
+</head>
+<body class="intro">
+<div id="app"></div>
+<div id="vignette"></div>
+<!-- 다른 공간으로 넘어갈 때 어두워지는 막 · 건너온 직후 소리 켜기 안내 -->
+<div id="fade"><div class="go-msg"><span class="go-text">🖼 전시관으로 가는 중</span><span class="go-dots"><i></i><i></i><i></i></span></div></div>
+<script>
+  if (/[?&]go=1/.test(location.search)) { document.getElementById('fade').classList.add('on', 'instant'); document.documentElement.classList.add('arriving'); }
+</script>
+<button id="sound-tap" class="glass" type="button">🔊 화면을 누르면 소리가 켜져요</button>
+
+<div id="hud" class="glass">
+  <span class="title" id="hud-title">데모데이 전시관</span>
+  <button class="meta people" id="people" type="button" title="누가 있는지 보기">혼자 둘러보는 중</button>
+  <div id="who" class="who"></div>
+  <span class="me">나: <b id="myname"></b><button id="rename" type="button">이름 바꾸기</button><button id="look-open2" type="button">모습 바꾸기</button></span>
+  <span class="me">방 코드: <b id="room-code">MAIN</b><button id="room-change" type="button">방 바꾸기</button><button id="room-copy" type="button">초대 주소 복사</button></span>
+</div>
+
+<div id="topright">
+  <button class="glass iconbtn" id="btn-places" type="button">📍 <b>길찾기</b></button>
+  <button class="glass iconbtn" id="btn-chat" type="button" title="대화">💬<span> 대화</span></button>
+  <button class="glass iconbtn" id="btn-music" type="button" title="축제 음악 켜기 · 끄기">🎵<span> 음악 켜짐</span></button>
+  <button class="glass iconbtn" id="btn-sound" type="button" title="소리">🔊<span> 소리 켜짐</span></button>
+  <button class="glass iconbtn" id="btn-help" type="button" title="도움말">❔<span> 도움말</span></button>
+</div>
+
+<div id="places" class="glass"><span class="label">길 찾기</span></div>
+
+<div id="gestures" class="glass">
+  <button type="button" id="g-wave" title="손 흔들기">👋<span> 손 흔들기</span></button>
+  <button type="button" id="g-bow" title="인사하기">🙇<span> 인사하기</span></button>
+  <button type="button" id="g-dance" title="춤추기">💃<span> 춤추기</span></button>
+  <button type="button" id="g-balloon" title="풍선 들기">🎈<span> 풍선 들기</span></button>
+  <button type="button" id="g-popper" title="폭죽 터트리기 (크래커)">🎉<span> 폭죽</span></button>
+  <button type="button" id="g-emoji" title="이모지 보내기">😊<span> 이모지</span></button>
+</div>
+
+<div id="pick" class="glass chooser">
+  <p id="pick-title">골라 주세요</p>
+  <div class="picks" id="pick-list"></div>
+  <button type="button" id="pick-cancel" class="cancel">그만두기</button>
+</div>
+
+<div id="chat" class="glass">
+  <div id="chat-head"><span>💬 대화</span><button id="chat-close" type="button" aria-label="닫기">✕</button></div>
+  <div id="chat-list"></div>
+  <div id="chat-quick">
+    <button type="button">안녕하세요!</button>
+    <button type="button">작품 멋져요 👏</button>
+    <button type="button">발표 잘 들었어요</button>
+  </div>
+  <div id="chat-row">
+    <input id="chat-input" type="text" maxlength="40" placeholder="전시관에서 한마디 (Enter)" autocomplete="off">
+    <button id="chat-send" type="button">보내기</button>
+  </div>
+</div>
+
+<div id="panel" class="glass"></div>
+<!-- 시상 — ?host=1 로 연 화면에만 보입니다 (보안 기능 아님) -->
+<div id="award" class="glass"><p>🏆 시상</p><div class="picks" id="award-list"></div></div>
+<div id="toast" class="glass"></div>
+<div id="roomfull" class="glass"></div>
+
+<div id="modal" class="overlay">
+  <div class="box glass">
+    <h4 id="modal-title"></h4>
+    <input id="modal-input" type="text" autocomplete="off">
+    <div class="row">
+      <span class="count" id="modal-count"></span>
+      <div class="btns">
+        <button class="cancel" id="modal-cancel" type="button">취소</button>
+        <button class="ok" id="modal-ok" type="button">확인</button>
+      </div>
+    </div>
+    <p class="notice" id="modal-notice">이름 · 연락처 같은 개인정보는 적지 말아 주세요.</p>
+  </div>
+</div>
+
+<div id="look" class="overlay">
+  <div class="box glass">
+    <h4>내 모습 고르기</h4>
+    <div id="look-main">
+      <canvas id="look-preview" width="300" height="420"></canvas>
+      <div id="look-side">
+        <div id="look-presets"></div>
+        <div id="look-body"></div>
+      </div>
+    </div>
+    <button class="ok" id="look-done" type="button">완료</button>
+  </div>
+</div>
+
+<div id="help" class="overlay">
+  <div class="box glass">
+    <h2 style="margin-bottom:14px">이렇게 둘러보세요</h2>
+    <ul>
+      <li class="pc">🖱 <b>바닥을 클릭</b>하면 그곳으로 걸어가요 · <b>W A S D</b> 로도 · <b>더블클릭 / Shift</b> 는 달리기</li>
+      <li class="pc">🔄 <b>드래그</b>로 둘러보기, <b>휠</b>로 확대·축소 · <b>Q E R F C</b> 시점 · <b>스페이스</b> 점프</li>
+      <li class="touch">📍 위쪽 <b>길찾기</b>를 누르면 입구 · 부스 · 발표 무대로 바로 이동해요</li>
+      <li class="touch">👆 <b>화면을 터치</b>하면 그곳으로 이동해요 · 두 번 톡톡 누르면 달려가요</li>
+      <li class="touch">🔄 <b>한 손가락으로 끌면</b> 둘러보고, <b>두 손가락을 벌리거나 모으면</b> 확대·축소</li>
+      <li>🖼 부스 앞에서 <b>액자 정면에서 보기</b> — 카메라가 액자를 정면으로 비춰요 (<span class="pc">Esc · </span>움직이면 끝)</li>
+      <li>🎤 통로 끝 <b>발표 무대</b>에 올라가거나, 앞 <b>관람석</b>(20석) 빈자리에 앉아요</li>
+      <li>🧑‍🎓 시상 때 우리 조가 불리면 <b>🏆 시상대에 서기</b>를 눌러요 — 빈자리에 자동으로 서요</li>
+      <li>👋 손 흔들기 · 인사 · 춤 · 풍선 · 폭죽 · 이모지는 같은 방 사람에게도 보여요</li>
+    </ul>
+    <button class="close" id="help-close" type="button">닫기</button>
+  </div>
+</div>
+
+<div id="intro" class="overlay show">
+  <div class="box glass">
+    <p class="kicker">DEMO DAY GALLERY</p>
+    <h1 id="intro-title">데모데이 전시관</h1>
+    <p class="sub" id="intro-sub"></p>
+    <ul>
+      <li>🖼 통로 양쪽 조별 부스 — 액자에 걸린 작품 둘러보기</li>
+      <li>📍 길찾기로 입구 · 부스 · 발표 무대에 바로 가기</li>
+      <li>🎤 통로 끝 발표 무대 · 관람석 20석</li>
+      <li>💬 같은 방 친구와 대화 · 손 흔들기 · 이모지</li>
+    </ul>
+    <div class="code">
+      <label for="intro-name">닉네임</label>
+      <input id="intro-name" type="text" maxlength="12" placeholder="보일 이름" autocomplete="off">
+    </div>
+    <button class="look-btn" id="look-open" type="button">🎨 내 모습 고르기</button>
+    <div class="code">
+      <label for="intro-code">방 코드</label>
+      <input id="intro-code" type="text" maxlength="12" placeholder="비워 두면 공개 방" autocomplete="off">
+    </div>
+    <button class="enter" id="enter" type="button" disabled>전시관 준비 중…</button>
+    <p class="mode" id="intro-mode"></p>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
