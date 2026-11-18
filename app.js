@@ -1024,7 +1024,7 @@
       const x = s.side * (AISLE_HALF + BOOTH_D / 2);
       const facing = -s.side * Math.PI / 2;                 // 왼쪽(+x) 부스는 -x 쪽(통로)을 봅니다
       const front = toWorld(x, s.z, facing, 0, BOOTH_D / 2 - 0.35);
-      BOOTHS.push({ no: i + 1, side: s.side, x, z: s.z, facing, color: boothColor(i), front, team: teamOf(i + 1), data: (teamOf(i + 1) && teamOf(i + 1).url) ? teamOf(i + 1) : null });
+      BOOTHS.push({ no: i + 1, side: s.side, x, z: s.z, facing, color: boothColor(i), front, team: teamOf(i + 1), data: (teamOf(i + 1) && (teamOf(i + 1).url || teamOf(i + 1).thumb)) ? teamOf(i + 1) : null });
     });
   }
   // '작품 준비 중' 자리 그림 — 캔버스에 직접 그립니다 (내일은 같은 모양의 drawPoster 를 만들어 paintFrame 에 넘기면 됨)
@@ -1691,7 +1691,177 @@
         scene.add(inst);
       });
     }
+    // 부드러운 빛용 그림 두 장 — 위로 사라지는 세로 그라데이션 · 동그란 후광
+    {
+      const fc = document.createElement('canvas'); fc.width = 4; fc.height = 128;
+      const fx = fc.getContext('2d'), fg = fx.createLinearGradient(0, 0, 0, 128);
+      fg.addColorStop(0, '#000'); fg.addColorStop(0.55, '#666'); fg.addColorStop(0.9, '#fff'); fg.addColorStop(1, '#000');   // 위(0)는 투명 · 아래 입구 쪽이 밝음
+      fx.fillStyle = fg; fx.fillRect(0, 0, 4, 128);
+      festive.fadeTex = new THREE.CanvasTexture(fc);
+      const hc = document.createElement('canvas'); hc.width = hc.height = 128;
+      const hx = hc.getContext('2d'), hg = hx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      hg.addColorStop(0, 'rgba(255,255,255,1)'); hg.addColorStop(0.35, 'rgba(255,255,255,.45)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
+      hx.fillStyle = hg; hx.fillRect(0, 0, 128, 128);
+      festive.haloTex = new THREE.CanvasTexture(hc);
+    }
+    // ⑦ 시상대 — 1·2·3등 단상과 선물 상자 (누르면 상품 공개, 내 화면에서만 · 메시지 안 씀)
+    {
+      const PRIZES = [
+        { rank: 1, amount: '20,000원', wrap: '#f4c542', ribbon: '#e0413a', h: 0.62, size: 0.58 },
+        { rank: 2, amount: '15,000원', wrap: '#d5dbe3', ribbon: '#3f7fd8', h: 0.44, size: 0.52 },
+        { rank: 3, amount: '10,000원', wrap: '#d6905a', ribbon: '#3fa86a', h: 0.30, size: 0.48 },
+      ];
+      festive.PRIZES = PRIZES;
+      // 연설대(x 4.1) 반대편. 관람석에서 보면 왼쪽부터 2 · 1 · 3 (관람석은 +z 를 보므로 +x 가 화면 왼쪽)
+      const PX = -2.9, PZ = STAGE.z + 1.2, GAP = 1.12;
+      const xs = { 1: PX, 2: PX + GAP, 3: PX - GAP };
+      const podTex = (pz) => signTex(256, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#fbf8f2'; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = pz.wrap; ctx.fillRect(0, 0, w, h * 0.16);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = pz.rank === 1 ? '#c99a17' : pz.rank === 2 ? '#7c8796' : '#a4602e';
+        ctx.font = `900 ${Math.round(h * 0.62)}px ${FONT}`;
+        ctx.fillText(String(pz.rank), w / 2, h * 0.6);
+      });
+      const podTop = (c) => mat(c, { roughness: 0.5, metalness: 0.25 });
+      festive.gifts = [];
+      for (const pz of PRIZES) {
+        const x = xs[pz.rank];
+        const fM = new THREE.MeshStandardMaterial({ map: podTex(pz), roughness: 0.7 });
+        const pod = faceBox(GAP - 0.04, pz.h, 0.9, mat('#fbf8f2', { roughness: 0.7 }), { 4: fM, 2: podTop(pz.wrap) });
+        pod.position.set(x, STAGE.h + pz.h / 2, PZ);
+        pod.rotation.y = Math.PI;                 // 숫자 면이 관람석(−z) 쪽
+        pod.castShadow = pod.receiveShadow = true;
+        scene.add(pod);
+        // 선물 상자 — 몸통 + 뚜껑(따로 움직임) + 리본 십자 + 나비 리본
+        const g = new THREE.Group();
+        g.position.set(x, STAGE.h + pz.h, PZ);
+        const S = pz.size, wrapM = mat(pz.wrap, { roughness: 0.35, metalness: pz.rank === 1 ? 0.35 : 0.2 }), ribM = mat(pz.ribbon, { roughness: 0.45 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(S, S * 0.78, S), wrapM);
+        body.position.y = S * 0.39;
+        const rb1 = new THREE.Mesh(new THREE.BoxGeometry(S * 1.01, S * 0.79, S * 0.16), ribM); rb1.position.y = S * 0.39;
+        const rb2 = new THREE.Mesh(new THREE.BoxGeometry(S * 0.16, S * 0.79, S * 1.01), ribM); rb2.position.y = S * 0.39;
+        const lid = new THREE.Group();
+        lid.position.y = S * 0.78;
+        const lidBox = new THREE.Mesh(new THREE.BoxGeometry(S * 1.08, S * 0.2, S * 1.08), wrapM); lidBox.position.y = S * 0.1;
+        const lr1 = new THREE.Mesh(new THREE.BoxGeometry(S * 1.09, S * 0.21, S * 0.16), ribM); lr1.position.y = S * 0.1;
+        const lr2 = new THREE.Mesh(new THREE.BoxGeometry(S * 0.16, S * 0.21, S * 1.09), ribM); lr2.position.y = S * 0.1;
+        const bowGeo = new THREE.TorusGeometry(S * 0.16, S * 0.05, 8, 18);
+        const bowA = new THREE.Mesh(bowGeo, ribM); bowA.position.set(-S * 0.14, S * 0.3, 0); bowA.rotation.set(0, Math.PI / 2, 0.5);
+        const bowB = new THREE.Mesh(bowGeo, ribM); bowB.position.set(S * 0.14, S * 0.3, 0); bowB.rotation.set(0, Math.PI / 2, -0.5);
+        const knot = new THREE.Mesh(new THREE.SphereGeometry(S * 0.07, 10, 8), ribM); knot.position.y = S * 0.28;
+        lid.add(lidBox, lr1, lr2, bowA, bowB, knot);
+        g.add(body, rb1, rb2, lid);
+        g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.userData = { kind: 'gift', rank: pz.rank }; clickables.push(m); } });
+        scene.add(g);
+        // 빛기둥 (열릴 때만)
+        // 빛 — 짧은 깔때기(위로 퍼지며 부드럽게 사라짐) + 상자 입구의 동그란 후광
+        const glowC = pz.rank === 1 ? '#ffe7a0' : pz.rank === 2 ? '#e6f0ff' : '#ffd2b0';
+        const beam = new THREE.Group();
+        const cone = new THREE.Mesh(new THREE.CylinderGeometry(S * 1.05, S * 0.32, 1.4, 28, 1, true),
+          new THREE.MeshBasicMaterial({ color: glowC, alphaMap: festive.fadeTex, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+        cone.position.y = 0.7;
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: festive.haloTex, color: glowC, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+        halo.position.y = 0.12;
+        beam.add(cone, halo);
+        beam.userData = { cone, halo };
+        beam.position.set(x, STAGE.h + pz.h + S * 0.8, PZ);
+        beam.visible = false;
+        scene.add(beam);
+        festive.gifts.push({ pz, g, lid, beam, S, x, z: PZ, top: STAGE.h + pz.h + S * 0.8, t: -1, wig: Math.random() * 4 });
+      }
+      // 단상 셋을 한 덩어리로 막음 — 따로 겹쳐 막으면 틈에서 서로 반대로 밀어 흔들리고, 화면판 뒤로 새어 나감
+      boxBlock(PX, PZ, GAP * 1.5 + R, 0.45 + R, 0);
+      // 상자 위로 피어오르는 반짝이 (눌러 보고 싶게)
+      const n = 36;
+      const sp = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.035, 0), new THREE.MeshBasicMaterial({ color: '#fff1a8', toneMapped: false }), n);
+      sp.frustumCulled = false;
+      const sparks = Array.from({ length: n }, (_, i) => ({ k: i % 3, ph: Math.random() * 3, r: 0.15 + Math.random() * 0.25, a: Math.random() * 6.28 }));
+      scene.add(sp);
+      festive.giftSparks = { sp, sparks };
+    }
+    function openGift(rank) {
+      const gi = festive.gifts.find((q) => q.pz.rank === rank);
+      if (!gi || gi.t >= 0 || $('#prize').classList.contains('show')) return;
+      ensureAudio();
+      gi.t = 0;
+      gi.popped = false;
+    }
+    festive.openGift = openGift;
+    function showPrize(pz) {
+      const box = $('#prize');
+      box.dataset.rank = String(pz.rank);
+      $('#prize-rank').textContent = `${pz.rank}등`;
+      $('#prize-title').textContent = `🏆 ${pz.rank}등 팀 선물`;
+      $('#prize-amount').textContent = `문화상품권 ${pz.amount}`;
+      $('#prize-sub').textContent = `데모데이 시상에서 ${pz.rank}등 팀에게 드려요 🎉`;
+      box.classList.add('show');
+      $('#prize-ok').focus();
+    }
+    function updateGifts(t, dt) {
+      const open = $('#prize').classList.contains('show');
+      for (const gi of festive.gifts) {
+        if (gi.t < 0) {
+          // 가만히 있을 때 — 몇 초마다 한 번씩 통통 (눌러 보라는 신호)
+          gi.wig += dt;
+          const w = gi.wig % 4.5;
+          const hop = w < 0.5 ? Math.sin(w / 0.5 * Math.PI) : 0;
+          gi.g.position.y = gi.top - gi.S * 0.8 + hop * 0.06;
+          gi.g.rotation.z = w < 0.5 ? Math.sin(w * 40) * 0.04 * hop : 0;
+          gi.lid.position.y = gi.S * 0.78; gi.lid.rotation.set(0, 0, 0);
+          continue;
+        }
+        gi.t += dt;
+        const tt = gi.t;
+        if (tt < 0.65) {                                 // 들썩들썩 — 점점 세게
+          const k = tt / 0.65;
+          gi.g.rotation.z = Math.sin(tt * 38) * 0.09 * k;
+          gi.g.position.y = gi.top - gi.S * 0.8 + Math.abs(Math.sin(tt * 19)) * 0.05 * k;
+        } else {
+          gi.g.rotation.z = 0;
+          gi.g.position.y = gi.top - gi.S * 0.8;
+          if (!gi.popped) {                              // 펑! 뚜껑 · 빛기둥 · 금가루 · 팡파르
+            gi.popped = true;
+            popConfetti(new THREE.Vector3(gi.x, gi.top + 0.1, gi.z), new THREE.Vector3(0, 1, 0), gi.pz.rank === 1 ? 0 : gi.pz.rank === 2 ? 1 : 3);
+            festive.later.push({ t: 0.18, fn: () => popConfetti(new THREE.Vector3(gi.x, gi.top + 0.3, gi.z), new THREE.Vector3(0, 1, 0), 2) });
+            gi.beam.visible = true;
+            [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.11, i === 3 ? 1.3 : 0.45, i * 0.12));
+            tone(1318.5, 0.06, 1.4, 0.5);
+            festive.later.push({ t: 0.9, fn: () => showPrize(gi.pz) });
+          }
+          const o = tt - 0.65;
+          // 뚜껑은 튀어 올랐다가 상자 위에 둥둥 떠서 빙글빙글
+          gi.lid.position.y = gi.S * 0.78 + Math.min(1, o * 4) * 0.75 + Math.sin(o * 3) * 0.05;
+          gi.lid.rotation.set(Math.min(1, o * 4) * 0.5, o * 2.2, 0);
+          const glow = Math.min(1, o * 3) * (open || o < 1.2 ? 1 : 0.5);
+          gi.beam.userData.cone.material.opacity = 0.5 * glow;
+          gi.beam.userData.cone.scale.set(1, 0.6 + 0.4 * Math.min(1, o * 2.5), 1);
+          gi.beam.rotation.y = o * 0.8;
+          const hs = gi.S * (2.6 + Math.sin(o * 5) * 0.25);
+          gi.beam.userData.halo.scale.set(hs, hs, 1);
+          gi.beam.userData.halo.material.opacity = 0.75 * glow;
+          // 카드를 닫고 2초 지나면 다시 처음 상태로
+          if (!open && o > 1.2) {
+            gi.closeT = (gi.closeT || 0) + dt;
+            if (gi.closeT > 2) { gi.t = -1; gi.closeT = 0; gi.beam.visible = false; gi.beam.userData.cone.material.opacity = 0; gi.beam.userData.halo.material.opacity = 0; }
+          } else gi.closeT = 0;
+        }
+      }
+      const { sp, sparks } = festive.giftSparks;
+      sparks.forEach((q, i) => {
+        const gi = festive.gifts[q.k];
+        const life = (t * 0.45 + q.ph) % 1;
+        const a = q.a + t * 0.6;
+        dummy.position.set(gi.x + Math.cos(a) * q.r, gi.top + 0.05 + life * 0.9, gi.z + Math.sin(a) * q.r);
+        dummy.rotation.set(t * 2 + i, t * 3, 0);
+        dummy.scale.setScalar(Math.sin(life * Math.PI) * (gi.t >= 0 ? 1.8 : 1));
+        dummy.updateMatrix();
+        sp.setMatrixAt(i, dummy.matrix);
+      });
+      sp.instanceMatrix.needsUpdate = true;
+    }
     festive.update = (t, dt) => {
+      updateGifts(t, dt);
       const fw = festive.fw;
       for (const b of festive.banners) b.g.rotation.y = Math.sin(t * 1.6 + b.ph) * 0.18;
       {
@@ -3143,7 +3313,7 @@
   // ------------------------------------------------------------------
   const places = [
     { type: 'entrance', name: '🚪 입구', desc: '데모데이 전시관에 오신 걸 환영해요. 통로를 따라 걸으며 조별 부스를 둘러보세요.', x: 0, z: ENTRY_Z - 3.5 },
-    ...BOOTHS.map((b) => ({ type: 'booth', no: b.no, booth: b, name: `부스 ${b.no}${b.team && b.team.team !== `${b.no}조` ? ' · ' + b.team.team : ''}`, desc: b.data ? '‘작품 열기’를 누르면 새 탭에서 작품이 열려요.' : '아직 작품이 걸리지 않았어요. 곧 이 액자에 작품이 걸려요.', x: b.front.x, z: b.front.z })),
+    ...BOOTHS.map((b) => ({ type: 'booth', no: b.no, booth: b, name: `부스 ${b.no}${b.team && b.team.team !== `${b.no}조` ? ' · ' + b.team.team : ''}`, desc: b.data && b.data.url ? '‘작품 열기’를 누르면 새 탭에서 작품이 열려요.' : b.data ? '액자에 작품 화면이 걸려 있어요. 발표 때 작품을 직접 보여 줘요.' : '아직 작품이 걸리지 않았어요. 곧 이 액자에 작품이 걸려요.', x: b.front.x, z: b.front.z })),
     { type: 'audience', name: '💺 관람석', desc: '무대 앞 관람석 20석이에요. 빈자리에 앉으면 무대를 바라봐요.', x: 0, z: CHAIR_BACK - 1.2 },
     { type: 'stage', name: '🎤 발표 무대', desc: '통로 끝 발표 무대예요. 계단으로 올라가 발표하고, 앞 관람석에 앉아 들을 수 있어요.', x: 0, z: STAGE.z - 0.6 },
   ];
@@ -3171,7 +3341,7 @@
     }
     if (p.type === 'stage' || p.type === 'audience') {
       const used = chairs.filter((c) => seatTaken(c) || mySeat === c).length;
-      return `관람석 ${used} / ${chairs.length}석 · ${award.team ? '지금 ' + awardTitle(award.team) : '무대 화면은 지금 비어 있어요'}`;
+      return `관람석 ${used} / ${chairs.length}석 · ${award.team ? '지금 ' + awardTitle(award.team) : '🎁 시상대의 선물 상자를 눌러 보세요'}`;
     }
     return '';
   }
@@ -3189,7 +3359,7 @@
     }
     if (p.type === 'booth') {
       const no = p.no;
-      if (p.booth && p.booth.data) list.push(['🚀 작품 열기', () => openWork(no)]);
+      if (p.booth && p.booth.data && p.booth.data.url) list.push(['🚀 작품 열기', () => openWork(no)]);
       if (camMode === 'frame' && frameView && frameView.no === no) list.push(['↩️ 돌아가기', () => stopFrameView()]);
       else list.push(['🖼 액자 정면에서 보기', () => viewFrame(no)]);
       if (no > 1) list.push([`⬅️ 부스 ${no - 1}`, () => goBooth(no - 1)]);
@@ -3667,6 +3837,12 @@
         if (free[0]) return sitAt(free[0]);
         return toast('누군가 앉아 있는 자리예요 🙂', 1600);
       }
+      // 선물 상자 — 관람석 · 무대(16m 안)면 바로 열고, 멀면 무대로 걸어감
+      if (u.kind === 'gift') {
+        if (dd < 16) return festive.openGift(u.rank);
+        goStage();
+        return toast('🎁 시상대로 가는 중 — 도착하면 선물 상자를 눌러 보세요', 2600);
+      }
       // 액자 — 가까우면 정면에서 보기, 멀면 그 부스로 걸어감
       if (u.kind === 'frame') {
         const b = boothByNo(u.no);
@@ -3777,6 +3953,8 @@
   window.addEventListener('resize', layoutPlaces);
   setTimeout(layoutPlaces, 0);
   $('#btn-help').onclick = () => $('#help').classList.add('show');
+  $('#prize-ok').onclick = () => $('#prize').classList.remove('show');
+  $('#prize').addEventListener('click', (e) => { if (e.target.id === 'prize') $('#prize').classList.remove('show'); });
   $('#help-close').onclick = () => $('#help').classList.remove('show');
   // 소리 장치를 통째로 새로 — 다른 앱에 다녀와 소리가 안 날 때. 바람 · 나뭇잎 소리를 다시 켭니다.
   function rebuildAudio() {
@@ -4064,6 +4242,7 @@
   const tmpMove = new THREE.Vector3(), tmpMove2 = new THREE.Vector3();
   const camRay = new THREE.Raycaster();
   window.__gal = {   // 확인용 (검증 스크립트 · 콘솔에서)
+    openGift: (r) => festive.openGift(r),
     degrade: () => { perfMon.t = 5; perfMon.n = 1; perfMon.low = 1; },
     net: () => ({ rate: +netRate().toFixed(3), n: presentIds.length }),
     perf: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, shadow: renderer.shadowMap.enabled, bloom: !!composer, pr: renderer.getPixelRatio() }),

@@ -91,6 +91,18 @@
 <!-- 시상 — ?host=1 로 연 화면에만 보입니다 (보안 기능 아님) -->
 <div id="award" class="glass"><p>🏆 시상</p><div class="picks" id="award-list"></div></div>
 <div id="toast" class="glass"></div>
+<!-- 시상대 선물 상자를 열면 나오는 상품 카드 -->
+<div id="prize" role="dialog" aria-modal="true" aria-labelledby="prize-title">
+  <div class="prize-card">
+    <div class="prize-shine"></div>
+    <div class="prize-badge" id="prize-rank">1등</div>
+    <div class="prize-eyebrow">🎁 보물 상자를 찾았어요!</div>
+    <h3 id="prize-title">🏆 1등 팀 선물</h3>
+    <div class="prize-ticket"><span class="prize-label">CULTURE GIFT CARD</span><b id="prize-amount">문화상품권 20,000원</b></div>
+    <p id="prize-sub">데모데이 시상에서 1등 팀에게 드려요 🎉</p>
+    <button type="button" id="prize-ok">좋아요!</button>
+  </div>
+</div>
 <div id="roomfull" class="glass"></div>
 
 <div id="modal" class="overlay">
