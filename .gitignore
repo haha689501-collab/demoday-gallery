@@ -10,3 +10,6 @@ CLAUDE.md
 README.md
 프롬프트.md
 showcase.sql
+
+.vercel
+.env*

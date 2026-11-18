@@ -10,3 +10,7 @@ CLAUDE.md
 README.md
 프롬프트.md
 showcase.sql
+
+# Vercel 연결 정보 · 토큰
+.vercel
+.env*
