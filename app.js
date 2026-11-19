@@ -6,7 +6,7 @@
  *  하늘 · 바닥 · 부스 · 액자 그림 · 소리 모두 코드로 만듭니다 (외부 파일 0개).
  *  설정(부스 수 · 이름 · Supabase 공개 키)은 같은 폴더의 config.js 에서 바꾸세요.
  *
- *  ※ 지금은 '빈 전시관'(배치만) 단계입니다. 부스 등록 · 포스터 · 작품 열기 · 좋아요는 아직 없습니다.
+ *  ※ 작품 액자 · 작품 열기 · 시상 · 좋아요/순위판(L3) 이 붙어 있습니다. 부스 등록(L1)은 아직 없습니다.
  *    붙일 자리: BOOTHS 배열 · paintFrame(booth, draw, data) · drawPlaceholder · actionsFor(p) 의 'booth' 칸
  */
 (async () => {
@@ -3309,6 +3309,172 @@
   }
 
   // ------------------------------------------------------------------
+  // ★ 좋아요 · 순위판 (L3) — showcase.sql 의 표 showcase_likes · 함수 showcase_like 를 그대로 씀
+  //   · room 은 방 코드와 상관없이 하나: 'GAL-LIKES-' + GALLERY_LIKES_ROUND (반 안 판은 'GALC-LIKES-…')
+  //   · 읽기 = 표 select, +1 = rpc 로만 (anon 키로는 직접 고치거나 지울 수 없음)
+  //   · Realtime 은 쓰지 않음 — 무료 한도(초당 100건) 때문에 8초마다 숫자를 다시 읽어 옴
+  //   · 키가 없으면(혼자 모드) 내 브라우저 localStorage 에만 저장
+  //   · '부스당 1회'는 localStorage 로 막는 클라이언트 제한 — 콘솔로 뚫을 수 있음 (수업에서 한계로 짚기)
+  // ------------------------------------------------------------------
+  const LIKE_ROUND = Math.max(1, Math.floor(Number(window.GALLERY_LIKES_ROUND) || 1));
+  const LIKE_ROOM = ((PRIVATE ? 'GALC-LIKES-' : 'GAL-LIKES-') + LIKE_ROUND).slice(0, 30);
+  const LIKED_KEY = `${CH}:liked:${LIKE_ROOM}`;           // 회차가 바뀌면 키도 바뀌어 다시 누를 수 있음
+  const LOCAL_LIKES_KEY = `${CH}:likes:${LIKE_ROOM}`;      // 혼자 모드 숫자
+  const likes = new Map();                                 // 부스 번호 → 좋아요 수
+  const liked = new Set((() => { try { return JSON.parse(localStorage.getItem(LIKED_KEY) || '[]'); } catch { return []; } })());
+  const likeBusy = new Set();
+  const likeCount = (no) => likes.get(no) || 0;
+  const boothLabel = (no) => { const t = teamOf(no); return t ? t.team : `${no}조`; };
+  const boothTitle = (no) => { const b = boothByNo(no); return (b && b.data && b.data.title) || ''; };
+  function likeRanking() {
+    return BOOTHS.map((b) => ({ no: b.no, n: likeCount(b.no) })).filter((r) => r.n > 0)
+      .sort((a, b) => b.n - a.n || a.no - b.no);
+  }
+  async function loadLikes() {
+    try {
+      const next = new Map();
+      if (store.mode === 'supabase') {
+        const { data, error } = await store.sb.from('showcase_likes').select('booth_no,value').eq('room', LIKE_ROOM);
+        if (error) throw error;
+        for (const r of data || []) next.set(Number(r.booth_no), Number(r.value) || 0);
+      } else {
+        const obj = JSON.parse(localStorage.getItem(LOCAL_LIKES_KEY) || '{}');
+        for (const [k, v] of Object.entries(obj)) next.set(Number(k), Number(v) || 0);
+      }
+      // 내가 방금 누른 +1 이 아직 반영 안 된 숫자로 덮이지 않게 — 눌러 둔 부스는 큰 쪽
+      for (const no of likeBusy) next.set(no, Math.max(next.get(no) || 0, likeCount(no)));
+      const changed = next.size !== likes.size || [...next].some(([k, v]) => likes.get(k) !== v);
+      if (!changed) return;
+      likes.clear();
+      for (const [k, v] of next) likes.set(k, v);
+      onLikesChanged();
+    } catch (e) {
+      console.warn('좋아요 숫자를 읽지 못했어요', e);
+    }
+  }
+  async function likeBooth(no) {
+    if (liked.has(no)) { toast('이 부스에는 이미 좋아요를 눌렀어요 💖'); return; }
+    if (likeBusy.has(no)) return;
+    likeBusy.add(no);
+    liked.add(no);
+    localStorage.setItem(LIKED_KEY, JSON.stringify([...liked]));
+    likes.set(no, likeCount(no) + 1);                      // 먼저 화면에 +1 (서버 답을 받으면 그 숫자로)
+    onLikesChanged();
+    try {
+      if (store.mode === 'supabase') {
+        const { data, error } = await store.sb.rpc('showcase_like', { p_room: LIKE_ROOM, p_booth: no });
+        if (error) throw error;
+        likes.set(no, Number(data) || likeCount(no));
+      } else {
+        const obj = JSON.parse(localStorage.getItem(LOCAL_LIKES_KEY) || '{}');
+        obj[no] = (Number(obj[no]) || 0) + 1;
+        localStorage.setItem(LOCAL_LIKES_KEY, JSON.stringify(obj));
+        likes.set(no, obj[no]);
+      }
+      toast(`❤️ ${boothLabel(no)}에 좋아요!`);
+    } catch (e) {
+      console.warn('좋아요를 보내지 못했어요', e);
+      liked.delete(no);
+      localStorage.setItem(LIKED_KEY, JSON.stringify([...liked]));
+      likes.set(no, Math.max(0, likeCount(no) - 1));
+      toast('좋아요를 보내지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+    } finally {
+      likeBusy.delete(no);
+      onLikesChanged();
+    }
+  }
+  function onLikesChanged() {
+    drawRankBoard();
+    if (currentPlace && currentPlace.type === 'booth') showPanel(currentPlace, true);
+    else refreshPanelInfo();
+  }
+
+  // 순위판 — 입구 아치 안쪽 왼편(+x), 통로와 입구 쪽을 비스듬히 바라봄. 1~3위 (조 이름 · 작품 제목 · 숫자)
+  const rankBoard = {};
+  {
+    const W = 3.0, H = 2.1, POST = 0.9;
+    const bx = AISLE_HALF + 1.5, bz = ENTRY_Z + 4.0, ry = Math.atan2(-0.8, -0.6);
+    rankBoard.canvas = document.createElement('canvas');
+    rankBoard.canvas.width = 780; rankBoard.canvas.height = Math.round(780 * H / W);
+    rankBoard.ctx = rankBoard.canvas.getContext('2d');
+    rankBoard.tex = new THREE.CanvasTexture(rankBoard.canvas);
+    rankBoard.tex.colorSpace = THREE.SRGBColorSpace;
+    rankBoard.tex.anisotropy = ANISO;
+    const g = new THREE.Group();
+    g.position.set(bx, 0, bz);
+    g.rotation.y = ry;
+    const trimM = mat('#2f3a4a', { roughness: 0.55, metalness: 0.2 });
+    const faceM = new THREE.MeshStandardMaterial({ map: rankBoard.tex, roughness: 0.7, emissive: '#ffffff', emissiveMap: rankBoard.tex, emissiveIntensity: 0.22 });
+    const panel = faceBox(W, H, 0.12, trimM, { 4: faceM });
+    panel.position.set(0, POST + H / 2, 0);
+    g.add(panel);
+    occluders.push(panel);
+    for (const s of [-1, 1]) g.add(mesh(new THREE.BoxGeometry(0.1, POST + 0.1, 0.1), trimM, s * (W / 2 - 0.2), (POST + 0.1) / 2, -0.02));
+    shadowAll(g);
+    scene.add(g);
+    for (const s of [-1, 1]) { const p = toWorld(bx, bz, ry, s * (W / 2 - 0.2), -0.02); blockers.push({ x: p.x, z: p.z, r: 0.08 + R }); }
+    boxBlock(bx, bz, W / 2 + R, 0.06 + R, ry);
+  }
+  let rankSig = '';
+  function drawRankBoard() {
+    const top = likeRanking().slice(0, 3);
+    const sig = top.map((r) => `${r.no}:${r.n}`).join(',');
+    if (sig === rankSig && rankBoard.drawn) return;
+    rankSig = sig; rankBoard.drawn = true;
+    const ctx = rankBoard.ctx, w = rankBoard.canvas.width, h = rankBoard.canvas.height;
+    const grd = ctx.createLinearGradient(0, 0, 0, h);
+    grd.addColorStop(0, '#2c3a52'); grd.addColorStop(1, '#1f2a3d');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#e8c477'; ctx.lineWidth = 6; ctx.strokeRect(12, 12, w - 24, h - 24);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center'; ctx.fillStyle = '#fff6e6';
+    ctx.font = `800 ${Math.round(h * 0.12)}px ${FONT}`;
+    const tw = ctx.measureText('좋아요 순위').width;
+    ctx.fillText('좋아요 순위', w / 2 + h * 0.06, h * 0.13);
+    ctx.fillStyle = '#ff6f86';
+    ctx.fillText('♥', w / 2 - tw / 2 - h * 0.03, h * 0.13);
+    ctx.fillStyle = '#e8c477'; ctx.fillRect(w * 0.2, h * 0.215, w * 0.6, 3);
+    const fit = (text, maxW, size, weight) => { let f = size; do { ctx.font = `${weight} ${f}px ${FONT}`; f -= 2; } while (ctx.measureText(text).width > maxW && f > 12); };
+    if (!top.length) {
+      ctx.fillStyle = '#d9dfeb';
+      fit('아직 좋아요가 없어요', w * 0.86, Math.round(h * 0.075), 700);
+      ctx.fillText('아직 좋아요가 없어요', w / 2, h * 0.5);
+      ctx.fillStyle = '#e8c477';
+      fit('부스 앞에서 ❤️ 좋아요를 눌러 보세요', w * 0.86, Math.round(h * 0.055), 600);
+      ctx.fillText('부스 앞에서 ❤️ 좋아요를 눌러 보세요', w / 2, h * 0.66);
+    } else {
+      const MEDAL = ['#f2c14e', '#c9d1db', '#d29a62'];
+      top.forEach((r, i) => {
+        const y = h * (0.37 + i * 0.205), b = boothByNo(r.no);
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(w * 0.05, y - h * 0.085, w * 0.9, h * 0.17);
+        ctx.fillStyle = (b && b.color) || '#888';
+        ctx.fillRect(w * 0.05, y - h * 0.085, 8, h * 0.17);
+        ctx.fillStyle = MEDAL[i];
+        ctx.beginPath(); ctx.arc(w * 0.12, y, h * 0.06, 0, 7); ctx.fill();
+        ctx.fillStyle = '#1f2a3d'; ctx.textAlign = 'center';
+        ctx.font = `900 ${Math.round(h * 0.065)}px ${FONT}`;
+        ctx.fillText(String(i + 1), w * 0.12, y + 1);
+        ctx.textAlign = 'left';
+        const title = boothTitle(r.no);
+        ctx.fillStyle = '#fff6e6';
+        fit(boothLabel(r.no), w * 0.52, Math.round(h * 0.085), 800);
+        ctx.fillText(boothLabel(r.no), w * 0.2, title ? y - h * 0.035 : y);
+        if (title) {
+          ctx.fillStyle = '#c9d3e4';
+          fit(title, w * 0.55, Math.round(h * 0.062), 600);
+          ctx.fillText(title, w * 0.2, y + h * 0.05);
+        }
+        ctx.textAlign = 'right'; ctx.fillStyle = '#ff8a9a';
+        ctx.font = `800 ${Math.round(h * 0.09)}px ${FONT}`;
+        ctx.fillText(`♥ ${r.n}`, w * 0.92, y);
+      });
+    }
+    rankBoard.tex.needsUpdate = true;
+  }
+  drawRankBoard();
+
+  // ------------------------------------------------------------------
   // 장소 — 입구 · 부스(BOOTHS 에서 자동으로) · 발표 무대
   // ------------------------------------------------------------------
   const places = [
@@ -3334,10 +3500,14 @@
   let currentPlace = null;
   function infoText(p) {
     if (!p) return '';
-    if (p.type === 'entrance') return `부스 ${BOOTH_N}곳 · 위쪽 길찾기로 바로 갈 수 있어요`;
+    if (p.type === 'entrance') {
+      const top = likeRanking().slice(0, 3);
+      return top.length ? '❤️ 순위 — ' + top.map((r, i) => `${i + 1}위 ${boothLabel(r.no)} ${r.n}`).join(' · ')
+        : `부스 ${BOOTH_N}곳 · 위쪽 길찾기로 바로 갈 수 있어요`;
+    }
     if (p.type === 'booth') {
       const t = p.booth.team;
-      return [p.booth.data ? `「${p.booth.data.title || p.booth.data.team}」` : '', t ? `${t.team}${t.members.length ? ' — ' + t.members.join(', ') : ''}` : '', p.booth.data ? '' : '작품 준비 중'].filter(Boolean).join(' · ');
+      return [p.booth.data ? `「${p.booth.data.title || p.booth.data.team}」` : '', t ? `${t.team}${t.members.length ? ' — ' + t.members.join(', ') : ''}` : '', p.booth.data ? '' : '작품 준비 중', `❤️ ${likeCount(p.no)}`].filter(Boolean).join(' · ');
     }
     if (p.type === 'stage' || p.type === 'audience') {
       const used = chairs.filter((c) => seatTaken(c) || mySeat === c).length;
@@ -3349,7 +3519,7 @@
     const i = $('#panel .info');
     if (i) i.textContent = infoText(currentPlace);
   }
-  // 장소별 버튼 — [글자, 할 일]. 내일 '작품 열기' · '좋아요' 는 'booth' 칸에 더하면 됩니다
+  // 장소별 버튼 — [글자, 할 일]. 부스: 작품 열기 · 좋아요 · 액자 보기 · 앞뒤 부스
   function actionsFor(p) {
     const pose = player.userData.pose;
     const list = [];
@@ -3360,6 +3530,7 @@
     if (p.type === 'booth') {
       const no = p.no;
       if (p.booth && p.booth.data && p.booth.data.url) list.push(['🚀 작품 열기', () => openWork(no)]);
+      list.push([liked.has(no) ? `💖 좋아요 했어요 (${likeCount(no)})` : `❤️ 좋아요 (${likeCount(no)})`, () => likeBooth(no)]);
       if (camMode === 'frame' && frameView && frameView.no === no) list.push(['↩️ 돌아가기', () => stopFrameView()]);
       else list.push(['🖼 액자 정면에서 보기', () => viewFrame(no)]);
       if (no > 1) list.push([`⬅️ 부스 ${no - 1}`, () => goBooth(no - 1)]);
@@ -3413,6 +3584,9 @@
     if (p.booth) { btn.classList.add('booth'); btn.style.setProperty('--acc', p.booth.color); }
     $('#places').append(btn);
   }
+  // 좋아요 숫자 — 처음 한 번 + 8초마다 다시 읽기 (패널 코드가 준비된 뒤에 시작)
+  loadLikes();
+  setInterval(() => { if (!document.hidden) loadLikes(); }, 8000);
 
   // 글 받기 — 안내 문구 · 버튼 글자를 상황에 맞게 바꿔서
   async function askWith(title, ph, notice, okText) {
@@ -4261,6 +4435,8 @@
     me: () => ({ id: me.id, name: me.name, team: me.team, mi: me.mi, seat: mySeat ? mySeat.i : null, pose: player.userData.pose }),
     setMe: (team, mi = -1) => { me.team = team; me.mi = mi; const t = teamOf(team); if (t && t.members[mi]) me.name = t.members[mi]; netDirty = true; },
     awardState: () => ({ ...award }),
+    likes: () => ({ room: LIKE_ROOM, counts: Object.fromEntries(likes), liked: [...liked], top: likeRanking().slice(0, 3) }),
+    like: (no) => likeBooth(no), loadLikes: () => loadLikes(),
     chairs: () => chairs.map((c) => ({ i: c.i, x: c.x, z: c.z, taken: seatTaken(c) })),
     // 가짜 접속자 추가 — list: [{ team, mi, name?, id? }] 또는 숫자(관람객 n명)
     addFakes: (list) => {

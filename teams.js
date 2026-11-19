@@ -13,3 +13,6 @@ window.GALLERY_TEAMS = [
   { no: 5, team: '5조', title: '', url: '', thumb: '' },
   { no: 6, team: '6조', title: '', url: '', thumb: '' },
 ];
+
+// 좋아요 회차 — 숫자를 1 올려 올리면(커밋 · 푸시) 모든 좋아요가 0 부터 다시 시작 (예전 숫자는 Supabase 에 남지만 안 씀)
+window.GALLERY_LIKES_ROUND = 1;
