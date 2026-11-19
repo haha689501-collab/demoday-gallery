@@ -10,9 +10,9 @@ window.GALLERY_TEAMS = [
   { no: 2, team: '2조', title: '쓸모없는 사이트 A–Z', url: '', thumb: 'works/useless-az.jpg' },
   { no: 3, team: '3조', title: '드래프트 룸', url: 'https://jiddaeng.github.io/brawl/', thumb: 'works/draft-room.jpg' },
   { no: 4, team: '4조', title: 'Aro — 디자인 시안', url: '', thumb: 'works/aro.jpg' },
-  { no: 5, team: '5조', title: '', url: '', thumb: '' },
+  { no: 5, team: '5조', title: 'MOVE', url: 'https://movewebglslop.netlify.app/#!/main', thumb: 'works/move.jpg' },
   { no: 6, team: '6조', title: '', url: '', thumb: '' },
 ];
 
 // 좋아요 회차 — 숫자를 1 올려 올리면(커밋 · 푸시) 모든 좋아요가 0 부터 다시 시작 (예전 숫자는 Supabase 에 남지만 안 씀)
-window.GALLERY_LIKES_ROUND = 1;
+window.GALLERY_LIKES_ROUND = 2;
