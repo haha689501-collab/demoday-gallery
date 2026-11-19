@@ -3314,7 +3314,7 @@
   //   · 읽기 = 표 select, +1 = rpc 로만 (anon 키로는 직접 고치거나 지울 수 없음)
   //   · Realtime 은 쓰지 않음 — 무료 한도(초당 100건) 때문에 8초마다 숫자를 다시 읽어 옴
   //   · 키가 없으면(혼자 모드) 내 브라우저 localStorage 에만 저장
-  //   · '부스당 1회'는 localStorage 로 막는 클라이언트 제한 — 콘솔로 뚫을 수 있음 (수업에서 한계로 짚기)
+  //   · '한 사람 1회'(모든 부스 통틀어 한 번)는 localStorage 로 막는 클라이언트 제한 — 콘솔로 뚫을 수 있음 (수업에서 한계로 짚기)
   // ------------------------------------------------------------------
   const LIKE_ROUND = Math.max(1, Math.floor(Number(window.GALLERY_LIKES_ROUND) || 1));
   const LIKE_ROOM = ((PRIVATE ? 'GALC-LIKES-' : 'GAL-LIKES-') + LIKE_ROUND).slice(0, 30);
@@ -3353,8 +3353,8 @@
     }
   }
   async function likeBooth(no) {
-    if (liked.has(no)) { toast('이 부스에는 이미 좋아요를 눌렀어요 💖'); return; }
-    if (likeBusy.has(no)) return;
+    if (liked.has(no)) { toast('이 부스에 이미 좋아요를 눌렀어요 💖'); return; }
+    if (liked.size || likeBusy.size) { toast(`좋아요는 한 번만 누를 수 있어요 — 이미 ${boothLabel([...liked][0])}에 눌렀어요 💖`); return; }
     likeBusy.add(no);
     liked.add(no);
     localStorage.setItem(LIKED_KEY, JSON.stringify([...liked]));
@@ -3530,7 +3530,7 @@
     if (p.type === 'booth') {
       const no = p.no;
       if (p.booth && p.booth.data && p.booth.data.url) list.push(['🚀 작품 열기', () => openWork(no)]);
-      list.push([liked.has(no) ? `💖 좋아요 했어요 (${likeCount(no)})` : `❤️ 좋아요 (${likeCount(no)})`, () => likeBooth(no)]);
+      list.push([liked.has(no) ? `💖 내가 고른 부스 (${likeCount(no)})` : liked.size ? `🤍 좋아요 ${likeCount(no)}` : `❤️ 좋아요 (${likeCount(no)})`, () => likeBooth(no)]);
       if (camMode === 'frame' && frameView && frameView.no === no) list.push(['↩️ 돌아가기', () => stopFrameView()]);
       else list.push(['🖼 액자 정면에서 보기', () => viewFrame(no)]);
       if (no > 1) list.push([`⬅️ 부스 ${no - 1}`, () => goBooth(no - 1)]);
