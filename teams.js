@@ -6,10 +6,10 @@
 // - no: 부스 번호   team: 조 이름   title: 작품 제목   url: 작품 주소 (https://)   thumb: 액자 캡처 (works/ 안)
 // - 2조 · 4조는 캡처만 걸려 있음 (작품 복사본은 공개하지 않음) — 학생이 직접 배포한 주소를 받으면 url 을 채우면 '작품 열기'가 생김
 window.GALLERY_TEAMS = [
-  { no: 1, team: '1조', title: '별담 유리병', url: 'https://claude.ai/artifact/MiwJVpmhTziF2DvUymPUyY#jar-3Q2YHC', thumb: 'works/byeoldam.jpg' },
-  { no: 2, team: '2조', title: '쓸모없는 사이트 A–Z', url: '', thumb: 'works/useless-az.jpg' },
-  { no: 3, team: '3조', title: '드래프트 룸', url: 'https://jiddaeng.github.io/brawl/', thumb: 'works/draft-room.jpg' },
-  { no: 4, team: '4조', title: 'Aro — 디자인 시안', url: '', thumb: 'works/aro.jpg' },
+  { no: 1, team: '1조', title: '별담 유리병', url: 'works/byeoldam.html', thumb: 'works/byeoldam.jpg' },
+  { no: 2, team: '2조', title: '쓸모없는 사이트 A–Z', url: 'works/useless-az.html', thumb: 'works/useless-az.jpg' },
+  { no: 3, team: '3조', title: '털실 타자기', url: 'works/knit-txt.html', thumb: 'works/knit-txt.jpg' },
+  { no: 4, team: '4조', title: 'Aro — 디자인 시안', url: 'works/aro.html', thumb: 'works/aro.jpg' },
   { no: 5, team: '5조', title: 'MOVE', url: 'https://movewebglslop.netlify.app/#!/main', thumb: 'works/move.jpg' },
   { no: 6, team: '6조', title: '', url: '', thumb: '' },
 ];
